@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"gopkg.in/vmihailenco/msgpack.v2"
 	"io"
 	"log"
 	"net"
@@ -13,6 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"gopkg.in/vmihailenco/msgpack.v2"
 )
 
 const requestsMap = 128
@@ -115,8 +116,11 @@ type Connection struct {
 	addr  string
 	c     net.Conn
 	mutex sync.Mutex
+
 	// Schema contains schema loaded on connection.
-	Schema    *Schema
+	Schema       *Schema
+	schemaUpdate chan uint32
+
 	requestId uint32
 	// Greeting contains first message sent by tarantool
 	Greeting *Greeting
@@ -522,6 +526,9 @@ func (conn *Connection) closeConnection(neterr error, forever bool) (err error) 
 			for fut != nil {
 				fut.err = neterr
 				fut.markReady(conn)
+				if fut.schemaID != uint32(conn.Schema.Version) {
+					conn.UpdateSchema(fut.schemaID)
+				}
 				fut, fut.next = fut.next, nil
 			}
 		}
@@ -658,6 +665,9 @@ func (conn *Connection) newFuture(requestCode int32) (fut *Future) {
 	}
 	fut.ready = make(chan struct{})
 	fut.requestId = conn.nextRequestId()
+	if conn.Schema != nil {
+		fut.schemaID = uint32(conn.Schema.Version)
+	}
 	fut.requestCode = requestCode
 	shardn := fut.requestId & (conn.opts.Concurrency - 1)
 	shard := &conn.shard[shardn]
@@ -720,6 +730,9 @@ func (conn *Connection) putFuture(fut *Future, body func(*msgpack.Encoder) error
 		shard.bufmut.Unlock()
 		if f := conn.fetchFuture(fut.requestId); f == fut {
 			fut.markReady(conn)
+			if fut.schemaID != uint32(conn.Schema.Version) {
+				conn.UpdateSchema(fut.schemaID)
+			}
 			fut.err = err
 		} else if f != nil {
 			/* in theory, it is possible. In practice, you have
@@ -808,6 +821,9 @@ func (conn *Connection) timeouts() {
 						Msg:  fmt.Sprintf("client timeout for request %d", fut.requestId),
 					}
 					fut.markReady(conn)
+					if fut.schemaID != uint32(conn.Schema.Version) {
+						conn.UpdateSchema(fut.schemaID)
+					}
 					shard.bufmut.Unlock()
 				}
 				if pair.first != nil && pair.first.timeout < minNext {

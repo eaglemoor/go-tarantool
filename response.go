@@ -2,12 +2,14 @@ package tarantool
 
 import (
 	"fmt"
+
 	"gopkg.in/vmihailenco/msgpack.v2"
 )
 
 type Response struct {
 	RequestId uint32
 	Code      uint32
+	SchemaID  uint32
 	Error     string // error message
 	// Data contains deserialized data for untyped requests
 	Data []interface{}
@@ -54,6 +56,12 @@ func (resp *Response) decodeHeader(d *msgpack.Decoder) (err error) {
 				return
 			}
 			resp.Code = uint32(rcode)
+		case KeySchemaID:
+			var sid uint64
+			if sid, err = d.DecodeUint64(); err != nil {
+				return
+			}
+			resp.SchemaID = uint32(sid)
 		default:
 			if err = d.Skip(); err != nil {
 				return

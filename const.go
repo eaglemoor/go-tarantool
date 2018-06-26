@@ -15,6 +15,7 @@ const (
 	SubscribeRequest = 66
 
 	KeyCode         = 0x00
+	KeySchemaID     = 0x05
 	KeySync         = 0x01
 	KeySpaceNo      = 0x10
 	KeyIndexNo      = 0x11

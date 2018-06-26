@@ -10,6 +10,7 @@ import (
 // Future is a handle for asynchronous request
 type Future struct {
 	requestId   uint32
+	schemaID    uint32
 	requestCode int32
 	timeout     time.Duration
 	resp        *Response
@@ -352,14 +353,16 @@ func (conn *Connection) EvalAsync(expr string, args interface{}) *Future {
 
 func (fut *Future) pack(h *smallWBuf, enc *msgpack.Encoder, body func(*msgpack.Encoder) error) (err error) {
 	rid := fut.requestId
+	sid := fut.schemaID
 	hl := len(*h)
 	*h = append(*h, smallWBuf{
 		0xce, 0, 0, 0, 0, // length
-		0x82,                           // 2 element map
+		0x83,                           // 3 element map
 		KeyCode, byte(fut.requestCode), // request code
 		KeySync, 0xce,
-		byte(rid >> 24), byte(rid >> 16),
-		byte(rid >> 8), byte(rid),
+		byte(rid >> 24), byte(rid >> 16), byte(rid >> 8), byte(rid),
+		KeySchemaID, 0xce,
+		byte(sid >> 24), byte(sid >> 16), byte(sid >> 8), byte(sid),
 	}...)
 
 	if err = body(enc); err != nil {
@@ -394,6 +397,9 @@ func (fut *Future) fail(conn *Connection, err error) *Future {
 	if f := conn.fetchFuture(fut.requestId); f == fut {
 		f.err = err
 		fut.markReady(conn)
+		if fut.schemaID != uint32(conn.Schema.Version) {
+			conn.UpdateSchema(fut.schemaID)
+		}
 	}
 	return fut
 }

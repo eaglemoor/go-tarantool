@@ -69,6 +69,7 @@ func (conn *Connection) loadSchema() (err error) {
 	if err != nil {
 		return err
 	}
+	schema.Version = uint(resp.SchemaID)
 	for _, row := range resp.Data {
 		row := row.([]interface{})
 		space := new(Space)
@@ -266,4 +267,7 @@ func (schema *Schema) resolveSpaceIndex(s interface{}, i interface{}) (spaceNo, 
 	}
 
 	return
+}
+
+func (conn *Connection) UpdateSchema(v uint32) {
 }
